@@ -24,6 +24,27 @@ from keras.models import Model
 from keras import backend as K
 from keras.engine.topology import Layer, InputSpec
 from keras import initializers
+from nltk import tokenize
+
+#### load my modules
+import pickle
+import os
+def load_pickle(filename):
+    with open(filename, 'rb') as gfp:
+        r = pickle.load(gfp)
+    return r
+### useful for class weight
+import functools
+from itertools import product
+import tensorflow as tf
+
+### select GPU
+gpu_id = 5
+print('Current running on GPU number:', gpu_id)
+
+gpu_options = tf.GPUOptions(visible_device_list=str(gpu_id))
+sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+####
 
 MAX_SENT_LENGTH = 100
 MAX_SENTS = 15
@@ -31,36 +52,15 @@ MAX_NB_WORDS = 20000
 EMBEDDING_DIM = 100
 VALIDATION_SPLIT = 0.2
 
-
-def clean_str(string):
-    """
-    Tokenization/string cleaning for dataset
-    Every dataset is lower cased except
-    """
-    string = re.sub(r"\\", "", string)
-    string = re.sub(r"\'", "", string)
-    string = re.sub(r"\"", "", string)
-    return string.strip().lower()
-
-
-#data_train = pd.read_csv('labeledTrainData.tsv', sep='\t')
-data_train = pd.read_csv('../../dir_HugeFiles/word2vec-nlp-tutorial/labeledTrainData.tsv', sep='\t')
-print data_train.shape
-
-from nltk import tokenize
-
-reviews = []
-labels = []
-texts = []
-
-for idx in range(data_train.review.shape[0]):
-    text = BeautifulSoup(data_train.review[idx])
-    text = clean_str(text.get_text().encode('ascii', 'ignore'))
-    texts.append(text)
-    sentences = tokenize.sent_tokenize(text)
-    reviews.append(sentences)
-
-    labels.append(data_train.sentiment[idx])
+### load my data
+dir_HugeFiles = '../../dir_HugeFiles/'
+dir_save4 = os.path.normpath(dir_HugeFiles+'preprocessing/dic_20190302.pickle')
+dic = load_pickle(dir_save4)
+### overwrite review, text, labels
+reviews = [v['directions'] for v in dic.values()]
+texts = [' '.join(v['directions']) for v in dic.values()]
+labels = [v['GI'] for v in dic.values()]    
+###
 
 tokenizer = Tokenizer(nb_words=MAX_NB_WORDS)
 tokenizer.fit_on_texts(texts)
@@ -190,9 +190,58 @@ l_att_sent = AttLayer(100)(l_lstm_sent)
 preds = Dense(2, activation='softmax')(l_att_sent)
 model = Model(review_input, preds)
 
-model.compile(loss='categorical_crossentropy',
+def batch_f1(y_true, y_pred):
+    def recall(y_true, y_pred):
+        """Recall metric.
+
+        Only computes a batch-wise average of recall.
+
+        Computes the recall, a metric for multi-label classification of
+        how many relevant items are selected.
+        """
+        true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
+        possible_positives = K.sum(K.round(K.clip(y_true, 0, 1)))
+        recall = true_positives / (possible_positives + K.epsilon())
+        return recall
+
+    def precision(y_true, y_pred):
+        """Precision metric.
+
+        Only computes a batch-wise average of precision.
+
+        Computes the precision, a metric for multi-label classification of
+        how many selected items are relevant.
+        """
+        true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
+        predicted_positives = K.sum(K.round(K.clip(y_pred, 0, 1)))
+        precision = true_positives / (predicted_positives + K.epsilon())
+        return precision
+    precision = precision(y_true, y_pred)
+    recall = recall(y_true, y_pred)
+    return 2*((precision*recall)/(precision+recall+K.epsilon()))
+
+# apply weights
+# ref: https://github.com/keras-team/keras/issues/2115
+class_weights = 58.7
+def w_categorical_crossentropy(y_true, y_pred, weights):
+    nb_cl = len(weights)
+    final_mask = K.zeros_like(y_pred[:, 0])
+    y_pred_max = K.max(y_pred, axis=1)
+    y_pred_max = K.expand_dims(y_pred_max, 1)
+    y_pred_max_mat = K.equal(y_pred, y_pred_max)
+    for c_p, c_t in product(range(nb_cl), range(nb_cl)):
+
+        final_mask += (K.cast(weights[c_t, c_p],K.floatx()) * K.cast(y_pred_max_mat[:, c_p] ,K.floatx())* K.cast(y_true[:, c_t],K.floatx()))
+    return K.categorical_crossentropy(y_pred, y_true) * final_mask
+w_array = np.ones((2,2))
+w_array[0,1] = class_weights
+w_array[1,0] = class_weights
+ncce = functools.partial(w_categorical_crossentropy, weights=w_array)
+ncce.__name__ ='w_categorical_crossentropy'
+
+model.compile(loss = ncce, #loss='binary_crossentropy',
               optimizer='rmsprop',
-              metrics=['acc'])
+              metrics=[batch_f1])
 
 print("model fitting - Hierachical attention network")
 model.fit(x_train, y_train, validation_data=(x_val, y_val),
