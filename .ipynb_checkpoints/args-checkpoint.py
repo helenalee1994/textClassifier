@@ -12,14 +12,17 @@ def get_parser():
     parser.add_argument('--snapshots', default='snapshots/',type=str)
     parser.add_argument('--random', default=10, type=int)
     parser.add_argument('--lr', default=1e-4, type=int)
+    parser.add_argument('--optm', default = '', type = str)
 
 
     # training 
     parser.add_argument('--epochs', default=10000, type=int)
     parser.add_argument('--ingrW2V', default='../data/vocab.bin',type=str)
     parser.add_argument('--gloveW2V', default='../../dir_HugeFiles/glove.6B/glove.6B.100d.txt',type=str)
-    parser.add_argument('--resume', default='', type=str)
     
+    # use pretrained
+    parser.add_argument('--resume', default='', type=str)
+    parser.add_argument('--test', default='', type=str)
     
     #gpu
     parser.add_argument('--gpu', default =2, type=int)

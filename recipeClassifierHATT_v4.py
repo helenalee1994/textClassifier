@@ -33,6 +33,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score, precision_score, recall_score
 import tensorflow as tf
 from tensorboardX import SummaryWriter
+from sys import exit
 writer = SummaryWriter()
 
 # =============================================================================
@@ -159,7 +160,8 @@ def main():
     
     #SGD
     custom_optimizer = optimizers.SGD(lr=opts.lr, momentum= 0.9)
-    
+    if opts.optm:
+        custom_optimizer = opts.optm
     model.compile(loss='binary_crossentropy', 
                   optimizer = custom_optimizer, #'rmsprop',
                   metrics=['acc'])
@@ -177,6 +179,25 @@ def main():
     else:
         best_val = float('inf')
         state = dict()
+        
+    if opts.test:
+        modelname = opts.test+'_model.h5'
+        statename = opts.test+'.pickle'
+        if os.path.isfile(modelname):
+            print("=> loading checkpoint '{}'".format(opts.test))
+            model.load_weights(modelname)
+            state = load_pickle(statename)
+            best_val = state['best_val']
+        else:
+            raise NameError("=> no checkpoint found at '{}'".format(modelname))
+        model.threshold = state['threshold']
+        print('train')
+        test_f1 = test(X_train, y_train, model, threshold = model.threshold, print_ = True)
+        print('val')
+        test_f1 = test(X_val, y_val, model, threshold = model.threshold, print_ = True)
+        print('test')
+        test_f1 = test(X_test, y_test, model, threshold = model.threshold, print_ = True)
+        exit()
 
     print("model fitting - Hierachical attention network")
     valtrack = 0
@@ -232,6 +253,7 @@ def main():
             make_dir(filepath)
             model.save(filepath+'_model.h5')
             state['opts']=opts
+            state['threshold']=model.threshold
             save_pickle(filepath+'.pickle',state)
         else:
             valtrack+=1
@@ -257,6 +279,7 @@ def load_pickle(filename):
         r = pickle.load(gfp)
     return r
 
+# ref: http://keras.io/layers/writing-your-own-keras-layers/
 class AttLayer(Layer):
     def __init__(self, attention_dim):
         self.init = initializers.get('normal')
