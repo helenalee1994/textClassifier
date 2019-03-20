@@ -12,12 +12,14 @@ def get_parser():
     parser.add_argument('--snapshots', default='snapshots/',type=str)
     parser.add_argument('--random', default=10, type=int)
     parser.add_argument('--lr', default=1e-4, type=int)
-    parser.add_argument('--optm', default = '', type = str)
-
-
+    parser.add_argument('--optm', default = '', type = str)#'rmsprop'
+    parser.add_argument('--sentlength', default = 100, type = int)
+    parser.add_argument('--wordlength', default = 50, type = int)
+    
     # training 
     parser.add_argument('--epochs', default=10000, type=int)
     parser.add_argument('--ingrW2V', default='../data/vocab.bin',type=str)
+    parser.add_argument('--foodW2V', default='../data/foodvec300.model',type=str)
     parser.add_argument('--gloveW2V', default='../../dir_HugeFiles/glove.6B/glove.6B.100d.txt',type=str)
     
     # use pretrained
